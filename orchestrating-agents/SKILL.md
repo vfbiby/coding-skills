@@ -72,7 +72,7 @@ description: 当调度者：派实现、派审查、自己复核、记录决定�
 
 ## 派活
 
-派出去的 agent 是**冷启动**的：它不知道这个仓库、不知道之前几轮做过什么、不会自己去找该读的文件。**需最精细判断的活（协议解码、并发正确性、金额计算）不派给便宜模型，走默认模型的 Agent 工具。** 派活分两半：**任务书写什么**（内容）和**怎么发**（机制）。下文 `<派活命令>` 是占位——用哪个模型的命令，见 `dispatch-dlaude`（DeepSeek）或 `dispatch-glm`（GLM）。
+派出去的 agent 是**冷启动**的：它不知道这个仓库、不知道之前几轮做过什么、不会自己去找该读的文件。**需最精细判断的活（协议解码、并发正确性、金额计算）不派给便宜模型，走默认模型的 Agent 工具。** 派活分两半：**任务书写什么**（内容）和**怎么发**（机制）。**scratchpad = 项目根下的 `.scratchpad/`（已 gitignore）**，task.md / task.log / 报告 / baseline 都落这里，固定路径、跨轮可寻。下文 `<派活命令>` 是占位——用哪个模型的命令，见 `dispatch-dlaude`（DeepSeek）或 `dispatch-glm`（GLM）。
 
 ### 任务书写什么
 
@@ -88,7 +88,9 @@ description: 当调度者：派实现、派审查、自己复核、记录决定�
 
 ### 怎么发
 
-**派活前先留可回退基线**：已成型的正常提交掉（一次一个）；未跟踪新目录 git 帮不上忙，`cp -r <目录> <scratchpad>/baseline-<名字>/`。没基线，「改回去」变「重新写一遍」→ 又会再派一轮。**撤回/还原/机械替换自己做，不派**——判据是**要不要做判断**，不是体量。**转发报错给执行侧前先自核**「不存在/找不到」——存在性是双方能独立核实的事实。
+**先确保 scratchpad 就位**（每个被派活项目做一次）：`mkdir -p .scratchpad`，并在 `.gitignore` 加一行 `.scratchpad/`（若没有）。之后 task.md / task.log / 报告 / baseline 都落这里。
+
+**派活前先留可回退基线**：已成型的正常提交掉（一次一个）；未跟踪新目录 git 帮不上忙，`cp -r <目录> .scratchpad/baseline-<名字>/`。没基线，「改回去」变「重新写一遍」→ 又会再派一轮。**撤回/还原/机械替换自己做，不派**——判据是**要不要做判断**，不是体量。**转发报错给执行侧前先自核**「不存在/找不到」——存在性是双方能独立核实的事实。
 
 **探活**：
 
@@ -98,10 +100,10 @@ zsh -c "source ~/.zshrc >/dev/null 2>&1; <派活命令> -p 'reply with exactly: 
 
 **探你这次真要用的那个**（不同模型通道坏不保证同时坏）。通道整体坏（TLS 等）时 `RESULT` 仍报 `success`——判据是响应正文，不是 `subtype`。探不通就自己写。
 
-**发出去**（写到 scratchpad 的 `task.md`，不进仓库）：
+**发出去**（写到 `.scratchpad/task.md`，不进仓库）：
 
 ```bash
-S=<scratchpad 目录>
+S=.scratchpad
 zsh -c "source ~/.zshrc >/dev/null 2>&1; <派活命令> -p \"\$(cat $S/task.md)\" \
   -n '<活名：如 loginwindow-实现豁免>' \
   --output-format stream-json --verbose --permission-mode acceptEdits \

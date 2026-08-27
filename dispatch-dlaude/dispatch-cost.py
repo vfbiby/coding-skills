@@ -4,29 +4,19 @@
 ────────────────────────────────────────────────────────────────────────
 用法
 ────────────────────────────────────────────────────────────────────────
-  dispatch-cost.py                      # 不给目录 → 列出本机所有候选 scratchpad 供你挑
-  dispatch-cost.py <日志目录>            # 统计该目录下的 *.log
+  dispatch-cost.py                      # 统计当前项目 .scratchpad/ 下的 *.log
+  dispatch-cost.py <日志目录>            # 统计指定目录下的 *.log
   dispatch-cost.py <日志目录> --bill <账单目录或 amount-*.csv>   # 顺便和账单对账
 
 ────────────────────────────────────────────────────────────────────────
-日志在哪（其他 agent 最常卡在这一步，所以写死在这里）
+日志在哪
 ────────────────────────────────────────────────────────────────────────
-派活配方里那条命令用 `tee "$S/task.log"` 落盘，`$S` 是**当前会话的 scratchpad 目录**，
-形如：
+派活配方里那条命令用 `tee "$S/task.log"` 落盘，`$S` 是**被派活项目根下的 `.scratchpad/`**
+（已 gitignore）。所有轮次的日志都落在同一个目录，不再散落在 /tmp 的随机会话 UUID 里。
 
-    /private/tmp/claude-<uid>/<项目路径转义>/<会话 UUID>/scratchpad/
+    <项目根>/.scratchpad/
 
-  - `<uid>` 是 macOS 上的用户 id（如 `claude-501`）；
-  - `<项目路径转义>` 是仓库绝对路径把 `/` 换成 `-`，如
-    `-Users-zhangsike-codes-mt-investor-plateform`；
-  - `<会话 UUID>` **每个会话都不同**——所以「上一个会话的日志」不在你自己的 scratchpad 里，
-    要按修改时间去别的 UUID 目录里找。
-
-找法（本脚本不给目录时就是干这个）：
-
-    ls -dt /private/tmp/claude-*/*/*/scratchpad 2>/dev/null | head
-
-⚠️ 这些目录是**临时的**，系统清理临时文件时会一起没掉；跨天的趋势别指望它（见 O-87）。
+⚠️ 这是**临时工作区**，别当长期存档——报告该蒸馏进 ADR/坑库，baseline 用完即删。
 
 ────────────────────────────────────────────────────────────────────────
 两个必须知道的偏差（不写清楚就会得出比账单小一截的数）
@@ -61,21 +51,6 @@ PRICE = {
 # 换算成北京时间就是工作日 09:00–12:00 与 14:00–18:00，周末全天错峰。
 # ⚠️ 判定必须在 UTC 上做——按本地时钟写死区间，跨时区或改了系统时区就会静默算错档。
 PEAK_UTC_HOURS = set(range(1, 4)) | set(range(6, 10))
-
-
-def discover():
-    """列出本机所有候选 scratchpad，按修改时间倒序。"""
-    dirs = glob.glob("/private/tmp/claude-*/*/*/scratchpad")
-    dirs = [d for d in dirs if glob.glob(os.path.join(d, "*.log"))]
-    if not dirs:
-        sys.exit("本机没有找到任何带 *.log 的 scratchpad 目录。\n"
-                 "手动找：ls -dt /private/tmp/claude-*/*/*/scratchpad")
-    print("带派活日志的 scratchpad（按修改时间倒序，越靠上越新）：\n")
-    for d in sorted(dirs, key=os.path.getmtime, reverse=True):
-        logs = glob.glob(os.path.join(d, "*.log"))
-        t = time.strftime("%m-%d %H:%M", time.localtime(os.path.getmtime(d)))
-        print(f"  {t}  {len(logs)} 个日志  {d}")
-    print("\n挑一个再跑一次：dispatch-cost.py <上面某一行的目录>")
 
 
 def read_result(path):
@@ -135,13 +110,13 @@ def main():
         bill_path = argv[i + 1] if i + 1 < len(argv) else sys.exit("--bill 后面要给账单目录或 csv")
         argv = argv[:i] + argv[i + 2:]
     if not argv:
-        return discover()
+        argv = [".scratchpad"]
 
     root = argv[0]
     files = sorted(glob.glob(os.path.join(root, "*.log")), key=os.path.getmtime)
     if not files:
         sys.exit(f"{root} 下没有 *.log —— 扫了空气，不是「消耗为零」。\n"
-                 "不带参数跑一次可以列出本机所有候选目录。")
+                 "确认派活命令把日志 tee 到了 .scratchpad/，或带 <日志目录> 参数。")
 
     tot = defaultdict(float)
     rows, unmeasured = [], []
