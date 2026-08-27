@@ -65,35 +65,6 @@ zsh -c "source ~/.zshrc >/dev/null 2>&1; dlaudef -p \"\$(cat $S/task.md)\" \
 
 **收活不要 `git add -A`。** 另一个 agent 可能正跑着或没复核——会卷进你的提交，一个提交两件事，事后 `reset --soft` 拆。**按路径 add**，或先 `git status` 看清楚。
 
-## 续派：复用上一个会话的上下文
-
-新活跟上一次**强相关**时（同模块后续、对同一份报告追问）可不付冷启动直接续：
-
-```bash
-# 发出后从原始日志落盘 session id（投影流里没有，要抓 task.log）
-grep -o '"session_id":"[^"]*"' $S/task.log | head -1 | cut -d'"' -f4 > $S/session.id
-
-# 续派：命令与「发出去」那条完全一样，只多 --resume
-zsh -c "source ~/.zshrc >/dev/null 2>&1; dlaudef -p \"\$(cat $S/task2.md)\" \
-  --resume \$(cat $S/session.id) \
-  --output-format stream-json --verbose --permission-mode acceptEdits \
-  --allowedTools '<同前>'" 2>&1 | tee "$S/task2.log" | <同前 jq 投影>
-```
-
-- **必须显式 `--resume <id>`，禁用 `--continue`。** 所有派活会话挤在同一个 `~/.claude_deepseek` 项目目录（按启动目录分桶），`--continue` 抓「最近一个」——很可能是另一件活。session id 要当轮落盘。按活名召回：`grep -l '"customTitle":"<活名>"' ~/.claude_deepseek/projects/*/*.jsonl`。
-- **续派时也要给 `-n`，名字要重归纳成整条 lineage 的意思**（如 `loginwindow-豁免+审查修复`）。resume 的 `-n` 是**追加**一条 `custom-title` 而旧名不动，按任何一期名字 grep 都还能找到。
-- **只有「强相关」才续。** 续派把上一份完整转录重放成输入：上下文越重模型想得越歪，且**缓存命中便宜 30× 只在缓存热时成立，两轮之间隔着人类决策必然凉了**。判据：**同一轮里紧接着追问**（agent 刚交活、你立刻追问）缓存热，续派真便宜；**隔了一轮人类决策再续**，成本≈把整份转录当新输入重发一次，此时冷启动新 agent + 紧凑任务书又快又便宜。
-- **新鲜度按时钟判是错的，按「接触面之后有没有提交」判。** 会话里的**事实**（读过的代码）过期最快、**过程**（debug 到哪、为何否了那个写法）不过期——续派搬的只是后者。风险：冷启动 agent 会重读，续上的 agent「记得」而记忆是旧的。查法：
-
-  ```bash
-  ls -la ~/.claude_deepseek/projects/<桶>/<id>.jsonl        # 会话日期 = mtime
-  grep -E '^USE (Read|Edit)' $S/task.log | cut -d' ' -f3- | sort -u   # 碰过哪些文件
-  git log --oneline --since=<那天> -- <上面的文件列表>               # 之后有没有被改
-  ```
-
-  三档：**0 提交**放心续；**有提交但跟下一件活无交集**可续、任务书点名「这些文件已变，先重读」；**改的正是下一件活要动的**冷启动更省。先看旧会话的 `report-<活名>.md` 还在不在——够用的话连 resume 都不需要。
-- **续派不豁免任务书规矩**（该点名的文件照样点名、该划死的范围照样划死）。续上的会话沿用同一个 scratchpad 目录。
-
 ## 白名单
 
 `--allowedTools` 必须写在命令行上，`.claude/settings.json` 的 `permissions.allow` 对派出去的 agent 无效（workspace 未 trust）。
@@ -120,6 +91,7 @@ Read,Write,Edit,Glob,Grep,Bash(git diff:*),Bash(git status:*),Bash(ls:*),Bash(ca
 
 派出去的 agent 是**冷启动**的：它不知道这个仓库、不知道之前几轮做过什么、不会自己去找该读的文件。
 
+- **任务书第一行写清本场可用工具**（对应白名单 bundle）：如「本场有 `Read,Write,Edit,Glob,Grep,Bash(dotnet:*)`」，并提醒「看文件用 `Read`/`Grep`，别用裸 `Bash`；跑测试只能走 `bash <脚本>`」——agent 一审就知道边界，省掉被拒的 turn。
 - **点名要读哪几个文件**，用全路径（相关 ADR、坑库条目 `docs/pitfalls/P-<编号>-<slug>.md`、spec、tasks——不点名它就不读）。**点名前先 grep**，拿改动领域词去文档目录搜一遍，命中全点名（凭回忆点名，漏的常是最该读的）。
 - **写清这轮最容易做错什么、错了会怎样**——不是「实现 X」，是「X 做错不会报错，只会让 Y 看起来更好」。
 - **报告写进文件，不在流里**。给绝对路径（scratchpad 下 `report-<活名>.md`），要求**边做边写、每节落一次盘**——流是易失的，agent 被杀时报告就没了。
