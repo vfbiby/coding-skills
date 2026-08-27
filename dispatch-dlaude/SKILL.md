@@ -12,7 +12,7 @@ description: 用 dlaudef / dlaudep / dlaudefv 把活派给子 agent 并复核结
 - `dlaudef`（deepseek-v4-flash）——照着命令直接执行，适合写死的实现类活。
 - `dlaudefv`（deepseek-v4-flash-vision）——能看图，适合界面等视觉验收。
 
-拿不准就上 `dlaudep`。命令其余参数三个通用；价格见同目录 `PRICING.md`。
+拿不准就上 `dlaudefv`,`dlaudef`。命令其余参数三个通用；价格见同目录 `PRICING.md`。
 
 ⚠️ 这些名字 2026-08-22 改过（`dlaude`→`dlaudef`、`dlaudepro`→`dlaudep`、`dlaudev`→`dlaudefv`），旧名字会 `command not found`。`dlaudefv` 是实验版，探活尤其不能省（更容易整体不可用）。
 
