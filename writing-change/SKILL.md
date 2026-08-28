@@ -28,8 +28,9 @@ disable-model-invocation: true
 
 ## 第 2 步：组装任务书，派一个子 agent
 
-通道用哪个由你和用户当时定（配方见 `dispatch-dlaude`），**这个 skill 不绑具体通道**——
-重要的是任务书写了什么，不是谁来跑。
+通道用哪个由你和用户当时定，**这个 skill 不绑具体通道**——重要的是任务书写了什么，不是谁来跑。
+派活机制（任务书要件、白名单、发送命令、收活）见 `orchestrating-agents`；用哪个模型（命令名、
+价格）见 `dispatch-dlaude` / `dispatch-glm`。
 
 任务书必须点名的东西（冷启动的 agent 不点名就不读，用全路径）：
 

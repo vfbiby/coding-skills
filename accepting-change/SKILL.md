@@ -140,4 +140,4 @@ disable-model-invocation: true
 |---|---|
 | e2e 装置与跑法 | Playwright：`cd src/web-ui && bun run test:e2e` |
 | 设计原型（前端改动先对照） | `prototype/observer-page-v6.html`（以仓库里最新那一版为准） |
-| 派活配方与白名单 | 全局 skill `dispatch-dlaude`（审查用只读白名单，不给构建工具） |
+| 派活机制与白名单 | 全局 skill `orchestrating-agents`（审查用只读 bundle ①/③，不给构建工具）；模型选型见 `dispatch-dlaude` / `dispatch-glm` |
