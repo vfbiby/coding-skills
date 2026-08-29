@@ -2,6 +2,7 @@
 name: dispatch-dlaude
 version: 3.0.0
 description: DeepSeek 派活器：用 dlaudef / dlaudep / dlaudefv 把活派给子 agent。这是「用哪个模型」的配置卡；派活机制（任务书 / 白名单 / 发送命令 / 复核）见 orchestrating-agents。
+disable-model-invocation: true
 ---
 
 # dispatch-dlaude：DeepSeek 派活器
