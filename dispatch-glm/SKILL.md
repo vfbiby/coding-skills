@@ -2,7 +2,6 @@
 name: dispatch-glm
 version: 1.0.0
 description: GLM 派活器：用 glmclaude / glmfclaude 把活派给子 agent。这是「用哪个 GLM 模型」的配置卡；派活机制（任务书 / 白名单 / 发送命令 / 复核）见 orchestrating-agents。触发于「用 glm 派活」「用 glmfclaude 跑」「派 agent 去实现」且想用 GLM 时。
-disable-model-invocation: true
 ---
 
 # dispatch-glm：GLM 派活器

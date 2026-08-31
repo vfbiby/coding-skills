@@ -2,7 +2,6 @@
 name: orchestrating-agents
 version: 2.0.0
 description: 当调度者：派实现、派审查、自己复核、记录决定与坑。含派活的 model 无关机制（任务书、白名单、发送命令、收活）。触发于「按我们的工作模式推进」「你负责规划和监督」，以及任何「agent 说做完了，我要判断可不可信」的时刻。具体用哪个模型（命令名/价格）见 dispatch-dlaude / dispatch-glm。
-disable-model-invocation: true
 ---
 
 # 当调度者
