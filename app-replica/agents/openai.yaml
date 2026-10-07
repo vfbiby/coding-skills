@@ -1,0 +1,3 @@
+interface:
+  display_name: "App 复刻"
+  short_description: "采集原生 App 母本，逐状态复刻并用视觉与交互证据验收"
