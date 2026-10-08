@@ -1,11 +1,11 @@
 ---
 name: add-relay-command
-description: 把一个 API 中转站（relay/gateway）接入某个 CLI（Claude Code、Codex CLI 等），做成 ~/.zshrc 里的独立启动命令。触发：用户给了中转站说明文档/密钥，想「跟 rbcco/geminiclaude/robcodex 一样做一个命令」时。
+description: 把一个 API 中转站（relay/gateway）接入某个 CLI（Claude Code、Codex CLI 等），做成 ~/.zshrc 里的独立启动命令。触发：用户给了中转站说明文档/密钥，想「跟 robclaude/geminiclaude/robcodex 一样做一个命令」时。
 ---
 
 # 中转站接入为独立命令
 
-用户的固定组织方式（用户明确拒绝安装包和 GUI 管理器）：**不改任何现有配置**，每个中转站×CLI 组合一个 zsh 函数 + 一个隔离配置目录。现有先例：`glmfclaude`/`glmfxclaude`（GLM）、`rbcco`（Claude 系）、`geminiclaude`（Gemini 系）、`robcodex`（GPT 系）。
+用户的固定组织方式（用户明确拒绝安装包和 GUI 管理器）：**不改任何现有配置**，每个中转站×CLI 组合一个 zsh 函数 + 一个隔离配置目录。现有先例：`glmfclaude`/`glmfxclaude`（GLM）、`robclaude`（Claude 系）、`geminiclaude`（Gemini 系）、`robcodex`（GPT 系）。
 
 ## 流程
 
@@ -38,7 +38,7 @@ python3 -c "import json; [print(m['id']) for m in json.load(open('/tmp/<名>_mod
 
 追加到文件末尾，带一行 `# <中转站> — use via `<命令>` command` 注释头。命名跟先例风格（中转站缩写+CLI 名）。
 
-**Claude Code 版**——`-u` 清泄漏变量是硬要求，一个都不能少（GLM 会话的 `ANTHROPIC_MODEL=glm-*` 泄漏进来会报「selected model 不存在」，这是用户上次 rbcco 失败的真因）：
+**Claude Code 版**——`-u` 清泄漏变量是硬要求，一个都不能少（GLM 会话的 `ANTHROPIC_MODEL=glm-*` 泄漏进来会报「selected model 不存在」，这是用户上次 robclaude 失败的真因）：
 
 ```zsh
 <命令>() {
@@ -93,7 +93,7 @@ env -u OPENAI_API_KEY CODEX_HOME=… codex exec --skip-git-repo-check "Reply wit
 
 ### 6. 收尾
 
-- 结果记入备忘 `mt9-rbcco-robinsonai.md`（或新建），MEMORY.md 索引行同步
+- 结果记入备忘 `mt9-robclaude-robinsonai.md`（或新建），MEMORY.md 索引行同步
 - 提醒用户：**开新终端**（或 `source ~/.zshrc`）再用新命令
 
 ## 排障速查
