@@ -31,3 +31,14 @@ Appium capability 的有效名称以已安装驱动源码为准。本轮 12.15.0
 - `waitForIdleTimeout=0` 时立即截图可能出现文字空白或残影。等待动画结束重采，并与 UI 树互证，再判为实现缺陷。
 - 采持续按住的滚动留白时，本轮并行发送带 pause 的触摸 actions 与 WDA `/screenshot` 成功；松手后另采回弹结果。普通截图可能等动作结束，需先验证截图确实处于按住状态。
 - MAUI 的 SVG 图标本轮经 `MauiImage` 构建为 PNG，运行时引用 `.png`；编译成功而图标空白时检查资源名。原生搜索 Cancel 会在输入事件后重现，需验输入后的稳定画面，不能只验焦点或初始样式。
+
+## 无 Appium 的 WDA 直连路径（2026-10-12 MT9 iPhone 12 Pro 实测闭环）
+
+- Appium 3.8/xcuitest 12.x 实测：`allowProvisioningUpdates` 不是有效 capability，只有 `allowProvisioningDeviceRegistration` 会向 xcodebuild 传 `-allowProvisioningUpdates`（与上节 12.15 结论一致，12.17 同）。
+- `updatedWDABundleId` 会被驱动自动追加 `.xctrunner`——传不带后缀的 id。
+- Xcode 无登录账号时的 WDA 构建：本机已下载的 Xcode 托管 profile 可直接用。团队号取 profile 的 AppID 前缀（如 `D29RGBQ9VP.com.mt9.*` → D29RGBQ9VP），不是证书名里的 team；`xcodebuild build-for-testing -scheme WebDriverAgentRunner DEVELOPMENT_TEAM=<前缀> CODE_SIGN_STYLE=Automatic PRODUCT_BUNDLE_IDENTIFIER=com.mt9.replica.WebDriverAgentRunner -allowProvisioningUpdates -derivedDataPath <目录>`。
+- 预装 WDA runner 用 devicectl 直接 launch 会立刻退出（无 testmanagerd）；正确姿势 = `xcodebuild test-without-building -xctestrun <derivedData>/Build/Products/*.xctestrun -destination id=<udid>`（已构建产物，不重编译）。服务器起在设备 8100，`iproxy 8100 8100` 后可**不经 Appium** 直连 WDA HTTP：POST /session、GET /screenshot、GET /source?format=xml、POST /element(s)+/click、/wda/dragfromtoforduration 全部可用。
+- xcodebuild/appium 从沙箱 shell 启动会继承沙箱并报「CoreDevice was unable to create bookmark data… denied by this process' sandbox」/code 65——必须在非沙箱环境启动。
+- MAUI 弹层行若 `accessible="false"`（如 SymbolRow_*），点其内部 accessible 子元素（SymbolOption_*）；accessibility id 从 /source 树里查。
+- devicectl launch 把 bundle id 之后的参数原样作 app argv 传进去（NSProcessInfo.Arguments 可读）——launch 参数驱动的验收自动驾驶在真机与模拟器同款可用。
+- 前次 Appium 失败会话可能把手机上的 WDA 卸掉；重装前先 `devicectl device info apps` 确认。
