@@ -1,2 +1,6 @@
 .scratchpad/
 __pycache__/
+# mtprobe 构建产物（build.sh 落位）
+broker-topology-probe/target/
+broker-topology-probe/mtprobe/bin/
+broker-topology-probe/mtprobe/obj/
