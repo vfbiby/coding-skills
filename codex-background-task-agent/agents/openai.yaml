@@ -1,0 +1,4 @@
+interface:
+  display_name: "Codex Background Task Agent"
+  short_description: "Run long commands through a subagent and report completion"
+  default_prompt: "Use this skill to run a long external command through a subagent and report its completion."
