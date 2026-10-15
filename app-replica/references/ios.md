@@ -42,3 +42,25 @@ Appium capability 的有效名称以已安装驱动源码为准。本轮 12.15.0
 - MAUI 弹层行若 `accessible="false"`（如 SymbolRow_*），点其内部 accessible 子元素（SymbolOption_*）；accessibility id 从 /source 树里查。
 - devicectl launch 把 bundle id 之后的参数原样作 app argv 传进去（NSProcessInfo.Arguments 可读）——launch 参数驱动的验收自动驾驶在真机与模拟器同款可用。
 - 前次 Appium 失败会话可能把手机上的 WDA 卸掉；重装前先 `devicectl device info apps` 确认。
+
+## 信任链前置检查与无感操作（2026-10-15 实测）
+
+### 信任链：先核对复用，绝不重复触发授权
+
+操作手机前先只读核对四件信任物，**齐全就直接用**：① USB 配对（devicectl 能列出设备即已配对）② 开发者模式已开 ③ WDA runner 已装且描述文件受信（`device info apps` 查 `*.xctrunner`）④ 设备已解锁（`device info lockState`）。四件齐 → 零新授权，所有设备操作（install/launch/terminate/截图/UI 树/点击）直接可用。
+
+其他工具重复弹授权的常见根因：重跑带 `-allowProvisioningUpdates` 的全新构建、重签/重装 WDA、重置配对——每一步都会在手机上弹授权。先确认旧信任物能不能复用，再谈重装。
+
+Mac 侧 root 命令（rvictl/arp/tcpdump/pf/sysctl）与手机侧操作是两条线：sudo 由所有者在终端执行，**手机侧零新授权**。
+
+### 无感操作：runner 永不抢屏
+
+- WDA 只作**后台测试宿主**：`test-without-building` 启动后**立刻** `devicectl launch` 把目标 App 调到前台——runner 自己的白色英文设置页（就是所有者看到的「Auto 跳英文」界面）与深色被测 App 交替 = 「时暗时明」的根源。
+- 控制全程走**无屏幕痕迹通道**：devicectl launch/terminate/install、WDA HTTP（screenshot/source/dragfromtoforduration）——不闪框、不弹字、不动亮度；避免每步重进 runner。
+- 诚实条款：无感 = 所有者无视觉提示。每个动作在会话里明说（「现在切后台」「现在杀掉重开」），所有者可随时喊停；若所有者要求可见标识，让 runner 前台挂着即可（可选，不默认）。
+
+### 真机验收判据（设备级回归的两个实测教训）
+
+- **macOS 单测全绿 ≠ 设备行为正确**。实例：ATS 管原生栈（HttpClient 默认 NSUrlSession）不管托管栈（HttpWebRequest/SocketsHttpHandler）——回环门转发单测 16/16 绿，真机登录必败。碰网络/生命周期的票必须真机冒烟。
+- 验收判据用「**连续跳动**」不用「跳一次」：后台 3 秒回来跳一拍又冻结，是 UI 线程编组缺失的错位现象（池线程直写 UIKit 在挂起/恢复一次后静默失效，数据层照常更新）。短后台连接不死也验不出恢复链——用 30–60s 长后台，观察窗内采样时间戳序列数「连续变化次数」。
+- 连接持有者页面的生命周期处理器（恢复链/断开）必须**页面期挂载**（构造器挂）：iOS 切后台会触发当前页 OnDisappearing，「成对挂摘」的旧假设在后台化时不成立——摘掉即真机上恢复链不跑。
