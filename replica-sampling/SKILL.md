@@ -74,6 +74,8 @@ description: 在 1:1 复刻网站页面前采集视觉基准，将观感差异�
 
 ## 8. 工具要点
 
+复用采集器：见[用法与配置](references/tool.md)，执行 `scripts/sample.mjs`；输出逐帧数据、截图及并排对照页。
+
 - playwright 独立命名会话（`-s=<name>`），与验收方/其他 agent 的共享会话隔离；截图用绝对路径
 - 批量提取用页面内 JS（`getBoundingClientRect`/`getComputedStyle`/CSSOM `document.styleSheets` 遍历含 `@media`），不逐个目测截图拼
 - 移动档用设备模拟参数；注意 dpr 影响截图物理尺寸，标注 CSS 视口为准

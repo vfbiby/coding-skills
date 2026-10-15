@@ -1,0 +1,18 @@
+{
+  "channel": "chrome",
+  "colorScheme": "dark",
+  "targets": [
+    { "name": "reference", "url": "http://localhost:3000", "ready": "#card" },
+    { "name": "ours", "url": "http://localhost:3001", "ready": ".word-card", "selectors": { "card": ".word-card" }, "actions": { "next": [{ "type": "click", "selector": "[data-testid=next]" }] } }
+  ],
+  "viewports": [
+    { "name": "short", "width": 1434, "height": 720, "dpr": 1 },
+    { "name": "below", "width": 1434, "height": 829, "dpr": 1 },
+    { "name": "above", "width": 1434, "height": 830, "dpr": 1 }
+  ],
+  "selectors": { "card": "#card" },
+  "states": [
+    { "name": "idle", "framesMs": [0] },
+    { "name": "next", "actions": [{ "type": "press", "key": "Space" }], "framesMs": [0, 100, 200, 450] }
+  ]
+}
