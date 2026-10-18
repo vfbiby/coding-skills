@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# 把本仓的 skill 软链进 Claude Code（~/.claude/skills）与 Codex（~/.codex/skills）。
+# 把本仓的 skill 软链进 Claude Code（~/.claude/skills）、Codex（~/.codex/skills）
+# 与 OpenCode（~/.config/opencode/skills）。
 # 通过 skills CLI 全局安装/刷新 Matt Pocock 的 skills（需要 bunx 和网络）。
 # 幂等：链对即跳过；目标被真实目录或其他链接占用则不动。
 # -f/--force：目标即使是错误/断掉的软链也强制重链；真实目录仍不动（防误删本地内容）。
@@ -22,6 +23,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TARGETS=(
   "${HOME}/.claude/skills"
   "${HOME}/.codex/skills"
+  "${HOME}/.config/opencode/skills"
 )
 
 for target in "${TARGETS[@]}"; do
@@ -48,4 +50,4 @@ for target in "${TARGETS[@]}"; do
   done
 done
 
-bunx skills@latest add mattpocock/skills --global --agent claude-code codex --skill '*' --yes
+bunx skills@latest add mattpocock/skills --global --agent claude-code codex opencode --skill '*' --yes
