@@ -30,6 +30,39 @@
 - 提交前 `cargo fmt --check` 零 diff（基线现状注明：干净/有旧债不许扫）。
 - **变异自证（硬性）**：亲手破坏实现确认断言变红再还原；写明变异点与变红测试名。
 
+## 工具与禁令（OpenCode 路线必填）
+
+OpenCode 没有 `--allowedTools`，这一段就是硬边界，必须写死；只写一句“遵守边界”不算。
+走 dlaudep 路线时，把「允许的工具」换成命令行白名单，同样要原样贴进任务书。
+
+### 允许的工具
+
+Read / Write / Edit / Glob / Grep / Bash / TodoWrite（按票增删；不要给用不到的工具）。
+
+### 允许的命令（只列前缀，按票补充）
+
+- 构建/测试：`cargo test`、`cargo fmt`、`bun run test`、`bun run typecheck`、`bun run build`
+- 只读：`git status`、`git diff`、`git log`、`git show`、`ls`、`cat`、`head`、`tail`、`wc`、`rg`、`find`
+- 提交：`git add`、`git commit`、`git checkout -- <path>`（只用于还原自己的变异）
+- 环境：`redis-cli ping`（只探活，不停服务）
+- <按票补充>
+
+### 禁止的命令（出现即违规）
+
+- `git push`、`git merge`、`git rebase`、`git reset --hard`、`git tag`、`git branch -D`
+- `gh`（任何子命令：关票 / 评论 / 改 label）
+- `rm -rf`（项目目录外或未确认的路径）
+- 用 `GATEWAY_ALLOW_NO_REDIS=1` 之类的开关掩盖测试失败
+- <按票补充>
+
+### 禁止的动作
+
+- 不 push、不合并、不关票、不评论 GitHub 票、不改主线 / 其他工作树
+- 不调用真实模型；不跑被禁的测试；不停共享 Redis / 本地栈进程
+- 不修改或删除既有测试来规避失败；不新增 `#[ignore]` / `.skip` / `.only`
+- 不降低 schema 必填约束、不放宽断言
+- <按票补充>
+
 ## 边界（硬性）
 
 - **不 push、不合并、不关票、不评论 GitHub 票。**

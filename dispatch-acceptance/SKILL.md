@@ -1,13 +1,13 @@
 ---
 name: dispatch-acceptance
-description: 派活与验收流程——所有者说「派/派票/继续派」时按此派出实施票（首选 glmfclaude/driver-glm.py；本会话已是 GLM 则直接 subagent；agy 暂时不可用不派），交付后走完整验收（双轴独立审查、亲跑变异、全量+fmt、合并推送顶钉子、关票）。覆盖工作树隔离、任务书七件套、钉子三处核对。
+description: 派活与验收流程——所有者说「派/派票/继续派」时按此派出实施票（首选 glmfclaude/driver-glm.py；额度不足时可走 OpenCode + DeepSeek V4.1 Flash/driver-opencode.py；本会话已是 GLM 则直接 subagent；agy 暂时不可用不派），交付后走完整验收（双轴独立审查、亲跑变异、全量+fmt、合并推送顶钉子、关票）。覆盖工作树隔离、任务书七件套、钉子三处核对。
 ---
 
 # 派活与验收
 
 角色：**我派票不写码**。实现缺陷发回实施者修补（可多轮）；验收方只亲做验证类操作（跑测试、打变异、读源核对）与合并/推送/钉子等流程动作。
 
-实施者路线（2026-10 起调整）：**agy 暂时不可用，一律不派**。首选 **glmfclaude**（GLM 驱动的 Claude Code，用 `driver-glm.py` 派发，见「派出」一步）；若本会话本身就是 glmfclaude（已经是 GLM 模型），**直接走 Claude subagent**（general-purpose，任务书直接复用），不必再套一层 GLM。agy 的历史深坑与经验留档在 `~/.claude_glmf/skills/agy-dispatch/SKILL.md`（--print 死亡史、settings、账号额度），恢复前仅供参考。
+实施者路线（2026-10 起调整）：**agy 暂时不可用，一律不派**。首选 **glmfclaude**（GLM 驱动的 Claude Code，用 `driver-glm.py` 派发，见「派出」一步）；若本会话本身就是 glmfclaude（已经是 GLM 模型），**直接走 Claude subagent**（general-purpose，任务书直接复用），不必再套一层 GLM。**GLM/其他通道额度不足时**，走可选的 **OpenCode + DeepSeek V4.1 Flash**（`driver-opencode.py`，见下；OpenCode 没有工具白名单，命令级边界必须写进任务书）。agy 的历史深坑与经验留档在 `~/.claude_glmf/skills/agy-dispatch/SKILL.md`（--print 死亡史、settings、账号额度），恢复前仅供参考。
 
 ## 一、派活
 
@@ -26,6 +26,31 @@ python3 ~/.agents/skills/dispatch-acceptance/driver-glm.py \
 - 结果 `type: "result"` 事件即收尾；进度随时可看 ndjson 事件流。
 - 本会话已是 GLM（glmfclaude）时跳过本步，直接 Agent 工具派 subagent，任务书原文作 prompt（加「所有命令同步执行」）。
 - （agy 恢复后才适用）agy 结果 `status: ERROR` 先查 `error` 字段：`RESOURCE_EXHAUSTED (429)` = 配额尽——**交付可能仍然完整**（提交已落地，死的是收尾调用），查工作树与测试再定性；配额反复撞墙就告知所有者换账号。
+
+### 可选路线：OpenCode + DeepSeek V4.1 Flash（GLM 额度不足时）
+
+```bash
+python3 ~/.agents/skills/dispatch-acceptance/driver-opencode.py \
+  <工作树> <任务书> <输出.ndjson> [模型] [超时秒]
+```
+
+- 默认模型 `deepseek/deepseek-flash`（= **DeepSeek V4.1 Flash 1017**，快、便宜）；难活可传
+  `deepseek/deepseek-flash#high` 或 `deepseek/deepseek-v4-pro`。也可用
+  `OPENCODE_DISPATCH_MODEL` 覆盖。
+- driver 用 `opencode run --standalone --auto --format json --agent build`：
+  `--standalone` 起私有 server，不碰当前会话的共享服务；`--auto` 自动批准工具。
+- **OpenCode 没有 `--allowedTools`。** driver 只能做两件事：
+  1. 启动前检查任务书里确实有硬边界（`不 push` / `不合并` / `不关票` / `禁止`），缺了直接拒派；
+  2. 把完整 JSONL 与 `.meta.json`（session / exit / tool_calls / error_events /
+     step_finish_reasons / last_text）落盘，供验收复核。
+- 命令级边界必须由任务书写死：**允许用哪些工具、允许跑哪些命令、禁止跑哪些命令、
+  禁止做哪些动作**。按 `brief-template.md` 的「工具与禁令（OpenCode 路线必填）」段填写，
+  不能只写一句“遵守边界”。
+- 退出码不可全信：OpenCode 可能在瞬时 transport 错误后仍完成任务但退出 1。
+  先看 `.meta.json` 的 `last_text` / `error_events` / `step_finish_reasons`，再以工作树
+  `git log/diff` 与测试实跑为准。
+- 进度看输出 ndjson 的 `tool_use` / `error` 事件；driver 的 stdout 已投影成 `TXT` / `USE` / `ERR` 行。
+- 建议同时把 `--title`（`OPENCODE_DISPATCH_TITLE`）设成票号/活名，便于在 OpenCode 会话里找。
 
 ## 二、验收
 
