@@ -40,8 +40,8 @@ function validate(config) {
   }
 }
 
-async function snapshot(page, selectors, properties) {
-  return page.evaluate(({ selectors, properties }) => {
+async function snapshot(page, selectors, properties, textRoot) {
+  return page.evaluate(({ selectors, properties, textRoot }) => {
     const elements = {};
     for (const [name, spec] of Object.entries(selectors)) {
       const { selector, pseudo, required = true } = typeof spec === 'string' ? { selector: spec } : spec;
@@ -54,6 +54,13 @@ async function snapshot(page, selectors, properties) {
           styles: Object.fromEntries(properties.map(p => [p, computed.getPropertyValue(p)])) };
       });
     }
+    const root = textRoot ? document.querySelector(textRoot) : null;
+    if (textRoot && !root) throw Error('missing textRoot');
+    const texts = root ? [...root.querySelectorAll('*')].flatMap(node => {
+      const text = [...node.childNodes].filter(child => child.nodeType === Node.TEXT_NODE).map(child => child.textContent.trim()).join('');
+      const r = node.getBoundingClientRect();
+      return text && node.getClientRects().length ? [{ text, x: r.x, y: r.y }] : [];
+    }) : undefined;
     const media = new Set();
     let inaccessibleSheets = 0;
     const seen = new Set();
@@ -74,10 +81,10 @@ async function snapshot(page, selectors, properties) {
         scrollX, scrollY, fonts: document.fonts.status },
       fontFaces: [...document.fonts].map(font => ({ family: font.family, status: font.status })),
       images: { total: document.images.length, pending: [...document.images].filter(image => !image.complete).length,
-        failed: [...document.images].filter(image => image.complete && !image.naturalWidth).length }, elements,
+        failed: [...document.images].filter(image => image.complete && !image.naturalWidth).length }, elements, texts,
       media: [...media].map(condition => ({ condition, matches: matchMedia(condition).matches })), inaccessibleSheets,
       bundles: [...document.scripts].filter(s => s.src).map(s => { const u = new URL(s.src); return `${u.origin}${u.pathname}`; }) };
-  }, { selectors, properties });
+  }, { selectors, properties, textRoot });
 }
 
 function compare(records, targets) {
@@ -179,7 +186,7 @@ export async function sample(config, { chromium, output, configDir = process.cwd
             while (performance.now() - started < requestedMs)
               await pause(Math.ceil(requestedMs - (performance.now() - started)));
             const measuredMs = performance.now() - started;
-            const data = await snapshot(page, { ...config.selectors, ...target.selectors }, config.styles ?? styles);
+            const data = await snapshot(page, { ...config.selectors, ...target.selectors }, config.styles ?? styles, target.textRoot ?? config.textRoot);
             const image = `${folder}/frame-${requestedMs}.png`;
             const start = performance.now() - started;
             await page.screenshot({ path: join(output, image), animations: 'allow' });

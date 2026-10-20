@@ -19,8 +19,28 @@ node "$HOME/.codex/skills/replica-sampling/scripts/sample.mjs" \
 - `states`：`name / actions / framesMs`。支持 `click / hover / press / waitFor`；前三种按需填 `selector`，`press` 填 `key`；`waitFor` 支持 `state: "hidden"`。两站入口不同，用 `target.actions[stateName]` 替换该状态操作。
 - 已登录采样：`target.storageState` 指向配置文件旁的会话 JSON；只读入，不复制到产物、不自动登录。会话文件放 Git 外。
 - 可选 `timeoutMs`、`colorScheme`、`styles`（覆盖默认计算样式字段列表）。
+- 可选 `textRoot`：在该容器内按自有文字采集元素坐标，供闸门按文字配对；两站容器不同用 `target.textRoot` 覆盖。
 
 每个目标×视口×状态都新建上下文，从入口恢复，避免前一状态污染后一个。初始等待字体和首屏图片；图片失败、未完成及不可读样式表会记录。JS 分支、缩放公式和语义仍需人工取证。
+
+## 闸门
+
+采集后对第一目标判定通过与否，退出码 1 表示有失败：
+
+```sh
+node "$HOME/.codex/skills/replica-sampling/scripts/gate.mjs" \
+  --config ./sampling.json --samples /tmp/replica-evidence/samples.json
+```
+
+规则写在配置的 `gate` 里：
+
+- `tolerancePx`（默认 4）：同名元素按序配对，x/y/width/height 超差即失败；`textRoot` 采到的文字按「文字+第几次出现」配对，比 x/y。
+- `styles`：`{ 元素名: [计算样式字段] }`，只比列出的字段，取值去空白后须相等。未列出的元素只比几何。
+- 我方元素少于参考即失败；多出的不比，因此我方新增内容只能追加在组末，否则会顶歪后续元素。
+- 我方页面出现横向滚动即失败。
+- `exempt`：`[{ element?, index?, field?, viewport?, state?, target?, reason }]`，只放行写明的项，`reason` 必填。参考有、我方没有的文字列入 `missingTexts`，不判失败，需人工看一遍（原生下拉的选中值常落在这里）。
+
+闸门全绿要配正向对照：手改一处被比对的样式（如圆角），重采后确认对应项报失败，再改回。
 
 ## 输出与边界
 

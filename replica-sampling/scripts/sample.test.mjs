@@ -38,6 +38,7 @@ test('real browser captures geometry, states, frames, provenance and blocks writ
     targets: [{ name: 'reference', url: base + '/reference?token=secret-fixture', ready: '#card' }, { name: 'actual', url: base + '/actual', ready: '#card', actions: { expanded: [{ type: 'press', selector: '#toggle', key: 'Enter' }] } }],
     viewports: [{ name: 'tall', width: 800, height: 720, dpr: 1 }, { name: 'short', width: 800, height: 650, dpr: 2 }],
     selectors: { card: '#card', optional: { selector: '#absent', required: false } },
+    textRoot: 'body',
     states: [{ name: 'idle', framesMs: [0] }, { name: 'expanded', actions: [{ type: 'click', selector: '#toggle' }], framesMs: [0, 100, 350] }],
   };
   try {
@@ -56,6 +57,7 @@ test('real browser captures geometry, states, frames, provenance and blocks writ
     assert.equal(get('reference', 'tall', 'expanded', 350).data.elements.card[0].rect.width, 160);
     assert.ok(Math.abs(get('reference', 'short', 'idle', 0).data.elements.card[0].rect.width - 80) < .01);
     assert.equal(get('reference', 'short', 'idle', 0).data.viewport.dpr, 2);
+    assert.deepEqual(get('reference', 'tall', 'idle', 0).data.texts.map(t => t.text), ['toggle']);
     assert.ok(get('reference', 'short', 'idle', 0).data.media.some(m => m.condition.includes('700px') && m.matches));
     assert.ok(get('reference', 'tall', 'idle', 0).data.media.some(m => m.condition.includes('700px') && !m.matches));
     for (const r of records) {

@@ -11,6 +11,8 @@
     { "name": "above", "width": 1434, "height": 830, "dpr": 1 }
   ],
   "selectors": { "card": "#card" },
+  "textRoot": "main",
+  "gate": { "tolerancePx": 4, "styles": { "card": ["background-color", "border-radius"] }, "exempt": [{ "element": "card", "field": "height", "state": "next", "reason": "our card appends a hint row" }] },
   "states": [
     { "name": "idle", "framesMs": [0] },
     { "name": "next", "actions": [{ "type": "press", "key": "Space" }], "framesMs": [0, 100, 200, 450] }
