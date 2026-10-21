@@ -107,3 +107,12 @@ replay mock server：时间轴推帧 + 加速/暂停/单步/丢包控制端点 +
 - **布局方向 bug 的表型是「对照面积不够」**：shell 容器 flex 方向写错（column vs row），sidebar 变成横带，pane 只有 335px 宽——/findings 表现为大面积结构差异时，先查壳层布局，别急着调比对器。
 - **变异门会被 golden 竞态间歇掩蔽**：注入「重复 terminal 帧」抬高的副作用计数可能正好落进 golden 自身的计数波动带 → 全观察面漏检（实测 3/3↔2/3 翻转）。处置：变异门遇 2/3 先复跑再归因；根治靠 F16 类加固（非确定性计数观察面加 retry-once/收敛规则）。**变异门不是永远可靠的信号**——这句要写进每个验收 SOP。
 - **懒挂载窗口的 IO 收敛手势**：回底后高度仍在结算，IntersectionObserver 可能停有过时挂载态——scroll 手势加对称 jiggle 强制重算 + post-gesture 检查点 settleMs 提高（1200ms 实测值）。
+
+## 收官补充（F15 实测，2026-10-16）
+
+- **`content-visibility:auto` 冻结测量**：渲染窗外一行的 getBoundingClientRect 返回 contain-intrinsic-size 估算值（而非真实高度，实测偏大 1/3），scrollHeight/懒挂载窗口计算全被污染——测量前临时强制该行真布局。这类 CSS containment 对几何观察面的系统性影响，比任何框架差异都难查。
+- **webfonts 头契约**：新框架的 index.html 容易漏掉旧版的字体 `<link>`；文本 face 未就绪时 IntersectionObserver 首测会误判——补齐头部契约 + 首测前 `document.fonts` 门。
+- **布局方向 bug 的表型是「对照面积不够」**：shell 容器 flex 方向写错（column vs row），sidebar 变成横带，pane 只有 335px 宽——findings 表现为大面积结构差异时，先查壳层布局，别急着调比对器。
+- **变异门会被 golden 竞态间歇掩蔽**：注入「重复 terminal 帧」抬高的副作用计数可能正好落进 golden 自身的计数波动带 → 全观察面漏检（实测 3/3↔2/3 翻转）。处置：变异门遇 2/3 先复跑再归因；根治靠加固票（非确定性计数观察面加 retry-once/收敛规则）。**变异门不是永远可靠的信号**——这句要写进每个验收 SOP。
+- **懒挂载窗口的 IO 收敛手势**：回底后高度仍在结算，IntersectionObserver 可能停有过时挂载态——scroll 手势加对称 jiggle 强制重算 + post-gesture 检查点 settleMs 提高（1200ms 实测值）。
+
