@@ -349,9 +349,11 @@ node scripts/extract-cards.mjs --dump-raw /tmp/raw   # 原始模块（默认关�
 
 官方侧没有可用的断言，只能抓帧；**不要**把"我们的测试全绿"说成"与官方一致"。
 
-1. 用 tmux 跑一次真实 CLI（固定 110 列，避免换行差异）：
+1. 用 tmux 跑一次真实 CLI（**固定 110 列**，避免换行差异；行数按场景定，
+   只影响一屏能看到多少行、不影响列宽对照——母本里 2.1.303 的卡片用 120 行，
+   2.1.304 的键盘探测用 60 行）：
    ```bash
-   tmux new-session -d -s cmp -x 110 -y 46
+   tmux new-session -d -s cmp -x 110 -y 120
    tmux send-keys -t cmp "cd /tmp/demo && claude --allowedTools 'Read' 'Grep' 'Bash' ..." Enter
    # 首次信任目录：Down + Enter
    ```
@@ -363,6 +365,9 @@ node scripts/extract-cards.mjs --dump-raw /tmp/raw   # 原始模块（默认关�
 5. 从**同一会话日志**抽载荷：`~/.claude/projects/<cwd-slug>/*.jsonl`，
    按 `tool_use_id` 配对 `tool_use` / `tool_result`，输出
    `{name,input,result,is_error,status}`。
+   各 profile 的 `projects/`（`~/.claude_glmf/projects`、`~/.claude_deepseek/projects`
+   等）**都是软链到 `~/.claude/projects`，是同一份文件**；不管走哪个 profile 抓的帧，
+   日志都在同一处，不要去 `~/.claude_<profile>/projects` 里另找。
 6. 用同一批载荷渲染我们：
    ```bash
    node scripts/card-gallery.mjs --tools /tmp/tools.json --out /tmp/web.html --expanded
@@ -404,7 +409,10 @@ node scripts/extract-cards.mjs --dump-raw /tmp/raw   # 原始模块（默认关�
 - [ ] 不显示内部 metadata / 不显示 Done 徽标
 - [ ] 记录哪些工具**没能触发**，明确写"未目视比对"
 - [ ] 新工具已归属：专属卡或显式 generic（`cardCoverage.test.ts`）
-- [ ] 官方抓帧、载荷、并排图都留在仓库外（/tmp），不提交
+- [ ] 抓帧母本按 `docs/tui-captures/<version>/<date>/<group>/` 入库（**入库是明确要求**，
+      不是例外）；会话 JSONL、完整 prompt、并排图留在 /tmp，不入库
+- [ ] 入库前过脱敏自检：`grep -rn "/Users/"`、`grep -rniE "auth_token|api[_-]?key|secret"`
+      必须为空（命中就把本机 home 归一化成 `~`）
 
 ### 9.6 升级后一条命令查漂移
 
@@ -436,14 +444,16 @@ maxResultSizeChars、isMcp）和字形集合：
 
 官方 TUI 有全局 `ctrl+o`：默认把一部分工具压成一行，展开才显示卡片。
 **只采展开态会把「收起」误判成缺失，也会把「默认展开」误判成需要收起。**
+所以每个场景都要采两态：不按 `ctrl+o` 的默认态 + 按了之后的展开态。
 
-1. 每个工具单独一轮：`/clear` → 只用一个工具的提示 → 等 turn 结束。
-2. 先抓默认（不按 `ctrl+o`），再按 `ctrl+o` 抓展开。
-3. 记录默认形态属于哪一类：
-   - **一行摘要**：Read / Bash / Grep / Glob / NotebookEdit
-   - **默认展开**：Edit 的 diff / Write 的内容
-   - **紧凑卡（头 + 一行结果）**：WebSearch / WebFetch / Agent
-4. 额度友好：用 `glmfclaude`（GLM 中转）。注意它的配置目录是 **`~/.claude_glmf`**，
-   会话日志在 `~/.claude_glmf/projects/<slug>/*.jsonl`，不是 `~/.claude`。
-5. **不要假设「全部收起」**：2.1.303 实测 Read/Bash/Grep 收起，Edit/Write 默认展开。
-6. 结论表 + 剩余差异：`course/web-client/docs/card-collapse-baseline.md`。
+**完整复采配方见 `course/web-client/docs/tui-captures/README.md` §复采**——tmux 尺寸、
+每工具一轮 `/clear`、`glmfclaude` 额度、目录命名规范、脱敏自检、版本号以 banner 为准，
+都在那份文档里，本技能不重复维护。
+
+本技能只保留必须记住的三条：
+
+1. 两态必采，**先抓默认再按 `ctrl+o`**。
+2. **不要假设「全部收起」**：2.1.303 实测 Read/Bash/Grep 收起，Edit/Write 默认展开，
+   WebSearch/WebFetch/Agent 是紧凑卡（头 + 一行结果）。
+3. 结论表 + 剩余差异：`course/web-client/docs/card-collapse-baseline.md`；
+   原始帧归档在同一 docs 目录的 `tui-captures/<version>/<date>/`。
