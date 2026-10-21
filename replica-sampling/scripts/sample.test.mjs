@@ -9,6 +9,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { sample } from './sample.mjs';
+import { gate } from './gate.mjs';
 
 test('real browser captures geometry, states, frames, provenance and blocks writes', async () => {
   const project = process.env.REPLICA_TEST_PROJECT ?? process.cwd();
@@ -58,6 +59,7 @@ test('real browser captures geometry, states, frames, provenance and blocks writ
     assert.ok(Math.abs(get('reference', 'short', 'idle', 0).data.elements.card[0].rect.width - 80) < .01);
     assert.equal(get('reference', 'short', 'idle', 0).data.viewport.dpr, 2);
     assert.deepEqual(get('reference', 'tall', 'idle', 0).data.texts.map(t => t.text), ['toggle']);
+    assert.deepEqual(get('actual', 'tall', 'idle', 0).selectors, { selectors: config.selectors, textRoot: 'body' });
     assert.ok(get('reference', 'short', 'idle', 0).data.media.some(m => m.condition.includes('700px') && m.matches));
     assert.ok(get('reference', 'tall', 'idle', 0).data.media.some(m => m.condition.includes('700px') && !m.matches));
     for (const r of records) {
@@ -96,6 +98,16 @@ test('real browser captures geometry, states, frames, provenance and blocks writ
     assert.equal(JSON.parse(await readFile(join(cliOutput, 'run.json'), 'utf8')).frames, 1);
     await writeFile(configPath, JSON.stringify({ ...config, targets: [{ name: 'unreachable', url: 'http://127.0.0.1:1/?token=secret-fixture' }] }));
     await assert.rejects(promisify(execFile)(process.execPath, [fileURLToPath(new URL('./sample.mjs', import.meta.url)), '--config', configPath, '--out', join(root, 'cli-failure'), '--project', project]), error => error.code === 1 && error.stderr.includes('ERR_UNSAFE_PORT') && !error.stderr.includes('secret-fixture'));
+    await assert.rejects(sample(config, { chromium, project, output: join(root, 'unknown-only'), only: ['nobody'] }), /unknown target: nobody/);
+    const split = {};
+    for (const name of ['reference', 'actual']) {
+      const out = join(root, `only-${name}`);
+      assert.deepEqual(await sample(config, { chromium, project, output: out, only: [name] }), { frames: 8, comparisons: 0 });
+      split[name] = JSON.parse(await readFile(join(out, 'samples.json'), 'utf8'));
+      assert.ok(split[name].every(r => r.target === name));
+    }
+    const verdict = gate([...split.reference, ...split.actual], config);
+    assert.ok(verdict.failures.some(f => f.element === 'card' && f.field === 'width' && f.actual - f.reference === 12));
     await fetch(base + '/write', { method: 'POST' });
     assert.equal(writes, 1, 'permanent positive control: HTTP recorder sees a real write');
     console.log('Evidence:', output);

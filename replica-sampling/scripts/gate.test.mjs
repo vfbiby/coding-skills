@@ -9,11 +9,12 @@ import { fileURLToPath } from 'node:url';
 import { gate } from './gate.mjs';
 
 const box = (x, radius = '8px') => ({ rect: { x, y: 10, width: 100, height: 40 }, styles: { 'border-radius': radius, color: 'rgb(0, 0, 0)' } });
-const frame = (target, elements, { texts = [], documentWidth = 800 } = {}) => ({
-  target, viewport: 'desk', state: 'idle', requestedMs: 0,
+const used = { selectors: { card: '.card' }, textRoot: null };
+const frame = (target, elements, { texts = [], documentWidth = 800, viewport = 'desk' } = {}) => ({
+  target, viewport, state: 'idle', requestedMs: 0, selectors: used,
   data: { viewport: { width: 800 }, document: { width: documentWidth }, elements, texts },
 });
-const config = gate => ({ targets: [{ name: 'reference' }, { name: 'ours' }], gate });
+const config = gate => ({ targets: [{ name: 'reference' }, { name: 'ours' }], selectors: { card: '.card' }, gate });
 const reference = frame('reference', { card: [box(0), box(0)] }, { texts: [{ text: 'Title', x: 0, y: 0 }, { text: 'Save', x: 0, y: 50 }] });
 
 test('matching samples pass and every rule is counted', () => {
@@ -54,6 +55,15 @@ test('exemptions need a reason and only silence what they name', () => {
   assert.deepEqual(gate([reference, styled], styleExempt).failures, []);
 });
 
+test('samples taken with other selectors, duplicated or without a reference are rejected', () => {
+  const ours = frame('ours', { card: [box(0), box(0)] }, { texts: reference.data.texts });
+  const changed = { ...config({}), selectors: { card: '.card-v2' } };
+  assert.throws(() => gate([reference, ours], changed), /other selectors; resample/);
+  assert.throws(() => gate([reference, { ...ours, selectors: undefined }], config({})), /other selectors/);
+  assert.throws(() => gate([reference, ours, ours], config({})), /duplicate samples/);
+  assert.throws(() => gate([ours], config({})), /no samples for reference/);
+});
+
 test('CLI exits 1 on failures and 0 when clean', async () => {
   const root = await mkdtemp(join(tmpdir(), 'replica-gate-test-'));
   const cli = fileURLToPath(new URL('./gate.mjs', import.meta.url));
@@ -63,4 +73,8 @@ test('CLI exits 1 on failures and 0 when clean', async () => {
   const run = file => promisify(execFile)(process.execPath, [cli, '--config', join(root, 'config.json'), '--samples', join(root, file)]);
   await assert.rejects(run('bad.json'), error => error.code === 1 && error.stdout.includes('border-radius'));
   assert.equal(JSON.parse((await run('good.json')).stdout).failures.length, 0);
+  await writeFile(join(root, 'reference.json'), JSON.stringify([reference]));
+  await writeFile(join(root, 'ours.json'), JSON.stringify([frame('ours', { card: [box(0, '4px'), box(0)] }, { texts: reference.data.texts })]));
+  const split = promisify(execFile)(process.execPath, [cli, '--config', join(root, 'config.json'), '--samples', join(root, 'reference.json'), '--samples', join(root, 'ours.json')]);
+  await assert.rejects(split, error => error.code === 1 && JSON.parse(error.stdout).failures.length === 1);
 });

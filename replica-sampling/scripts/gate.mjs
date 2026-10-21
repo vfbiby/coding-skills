@@ -4,6 +4,7 @@ import { realpathSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
+import { selectorsOf } from './sample.mjs';
 
 const GEOMETRY = ['x', 'y', 'width', 'height'];
 const squash = value => String(value ?? '').replace(/\s+/g, '');
@@ -17,9 +18,24 @@ function validate(gate) {
 const exempted = (gate, failure) => (gate.exempt ?? []).some(rule =>
   ['target', 'viewport', 'state', 'element', 'index', 'field'].every(key => rule[key] === undefined || rule[key] === failure[key]));
 
+function checkSamples(records, config) {
+  const seen = new Set();
+  for (const record of records) {
+    const target = config.targets.find(t => t.name === record.target);
+    if (!target) throw Error(`samples contain unknown target ${record.target}`);
+    if (JSON.stringify(record.selectors) !== JSON.stringify(selectorsOf(config, target)))
+      throw Error(`samples for ${record.target} were taken with other selectors; resample that target`);
+    const scene = [record.target, record.viewport, record.state, record.requestedMs].join('/');
+    if (seen.has(scene)) throw Error(`duplicate samples for ${scene}`);
+    seen.add(scene);
+  }
+  if (!records.some(r => r.target === config.targets[0].name)) throw Error(`no samples for reference ${config.targets[0].name}`);
+}
+
 export function gate(records, config) {
   const rules = config.gate ?? {};
   validate(rules);
+  checkSamples(records, config);
   const tolerance = rules.tolerancePx ?? 4;
   const reference = config.targets[0].name;
   const failures = [];
@@ -69,11 +85,12 @@ export function gate(records, config) {
 }
 
 async function main() {
-  const { values } = parseArgs({ options: { config: { type: 'string' }, samples: { type: 'string' }, help: { type: 'boolean' } } });
-  if (values.help) { console.log('node gate.mjs --config sampling.json --samples evidence/samples.json'); return; }
+  const { values } = parseArgs({ options: { config: { type: 'string' }, samples: { type: 'string', multiple: true }, help: { type: 'boolean' } } });
+  if (values.help) { console.log('node gate.mjs --config sampling.json --samples reference/samples.json [--samples ours/samples.json]'); return; }
   if (!values.config || !values.samples) throw Error('--config and --samples are required');
   const config = JSON.parse(await readFile(resolve(values.config), 'utf8'));
-  const result = gate(JSON.parse(await readFile(resolve(values.samples), 'utf8')), config);
+  const records = (await Promise.all(values.samples.map(async file => JSON.parse(await readFile(resolve(file), 'utf8'))))).flat();
+  const result = gate(records, config);
   console.log(JSON.stringify(result, null, 2));
   if (result.failures.length) process.exitCode = 1;
 }

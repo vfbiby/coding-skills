@@ -16,6 +16,8 @@ const escape = value => String(value).replace(/[&<>"']/g, c => ({ '&': '&amp;', 
 const json = (file, value) => writeFile(file, JSON.stringify(value, null, 2) + '\n');
 const pause = ms => new Promise(r => setTimeout(r, ms));
 
+export const selectorsOf = (config, target) => ({ selectors: { ...config.selectors, ...target.selectors }, textRoot: target.textRoot ?? config.textRoot ?? null });
+
 function validate(config) {
   for (const key of ['targets', 'viewports', 'states']) {
     if (!Array.isArray(config[key]) || !config[key].length) throw Error(`${key} must be a nonempty array`);
@@ -92,6 +94,7 @@ function compare(records, targets) {
   for (const reference of records.filter(r => r.target === targets[0].name)) {
     for (const name of targets.slice(1).map(t => t.name)) {
       const actual = records.find(r => r.target === name && r.viewport === reference.viewport && r.state === reference.state && r.requestedMs === reference.requestedMs);
+      if (!actual) continue;
       const differences = [];
       for (const element of new Set([...Object.keys(reference.data.elements), ...Object.keys(actual.data.elements)])) {
         const expected = reference.data.elements[element] ?? [];
@@ -130,8 +133,11 @@ function report(records, comparisons) {
     }).join('')}</div><details><summary>Geometry and computed style differences</summary><pre>${escape(JSON.stringify(comparisons.filter(c => `${c.viewport} / ${c.state} / requested ${c.requestedMs}ms` === name), null, 2))}</pre></details></section>`).join('')}`;
 }
 
-export async function sample(config, { chromium, output, configDir = process.cwd(), project = process.cwd() }) {
+export async function sample(config, { chromium, output, configDir = process.cwd(), project = process.cwd(), only = [] }) {
   validate(config);
+  const unknown = only.filter(name => !config.targets.some(t => t.name === name));
+  if (unknown.length) throw Error(`unknown target: ${unknown.join(', ')}`);
+  const targets = only.length ? config.targets.filter(t => only.includes(t.name)) : config.targets;
   await mkdir(output, { recursive: true });
   if ((await readdir(output)).length) throw Error('output directory must be empty; samples are never overwritten');
   const revision = (() => {
@@ -140,7 +146,7 @@ export async function sample(config, { chromium, output, configDir = process.cwd
     catch { return null; }
   })();
   const run = { status: 'running', startedAt: new Date().toISOString(), project: revision,
-    targets: config.targets.map(t => ({ name: t.name, url: safeUrl(t.url), revision: t.revision ?? null })), blockedRequests: [] };
+    targets: targets.map(t => ({ name: t.name, url: safeUrl(t.url), revision: t.revision ?? null })), blockedRequests: [] };
   await json(join(output, 'run.json'), run);
   let browser;
   const records = [];
@@ -148,7 +154,7 @@ export async function sample(config, { chromium, output, configDir = process.cwd
   try {
     browser = await chromium.launch({ headless: true, channel: config.channel, executablePath: config.executablePath });
     run.browser = browser.version();
-    for (const target of config.targets) for (const viewport of config.viewports) for (const state of config.states) {
+    for (const target of targets) for (const viewport of config.viewports) for (const state of config.states) {
       const context = await browser.newContext({ viewport: { width: viewport.width, height: viewport.height },
         deviceScaleFactor: viewport.dpr ?? 1, isMobile: viewport.isMobile ?? false, hasTouch: viewport.hasTouch ?? false,
         userAgent: viewport.userAgent, colorScheme: config.colorScheme ?? 'dark', reducedMotion: 'no-preference', serviceWorkers: 'block',
@@ -186,11 +192,12 @@ export async function sample(config, { chromium, output, configDir = process.cwd
             while (performance.now() - started < requestedMs)
               await pause(Math.ceil(requestedMs - (performance.now() - started)));
             const measuredMs = performance.now() - started;
-            const data = await snapshot(page, { ...config.selectors, ...target.selectors }, config.styles ?? styles, target.textRoot ?? config.textRoot);
+            const used = selectorsOf(config, target);
+            const data = await snapshot(page, used.selectors, config.styles ?? styles, used.textRoot);
             const image = `${folder}/frame-${requestedMs}.png`;
             const start = performance.now() - started;
             await page.screenshot({ path: join(output, image), animations: 'allow' });
-            const record = { target: target.name, viewport: viewport.name, state: state.name, requestedMs, measuredMs,
+            const record = { target: target.name, viewport: viewport.name, state: state.name, requestedMs, measuredMs, selectors: used,
               screenshotMs: { start, end: performance.now() - started }, image, fullPage: `${folder}/full.png`, data };
             records.push(record);
             await json(join(output, folder, `frame-${requestedMs}.json`), record);
@@ -218,8 +225,8 @@ export async function sample(config, { chromium, output, configDir = process.cwd
 }
 
 async function main() {
-  const { values } = parseArgs({ options: { config: { type: 'string' }, out: { type: 'string' }, project: { type: 'string' }, help: { type: 'boolean' } } });
-  if (values.help) { console.log('node sample.mjs --config sampling.json --out evidence-dir [--project path-with-playwright]'); return; }
+  const { values } = parseArgs({ options: { config: { type: 'string' }, out: { type: 'string' }, project: { type: 'string' }, only: { type: 'string', multiple: true }, help: { type: 'boolean' } } });
+  if (values.help) { console.log('node sample.mjs --config sampling.json --out evidence-dir [--project path-with-playwright] [--only target ...]'); return; }
   if (!values.config || !values.out) throw Error('--config and --out are required');
   const project = resolve(values.project ?? process.cwd());
   const require = createRequire(join(project, 'package.json'));
@@ -229,7 +236,7 @@ async function main() {
   }
   if (!playwright) throw Error('Install Playwright in --project, or point --project at an existing installation');
   const path = resolve(values.config);
-  console.log(await sample(JSON.parse(await readFile(path, 'utf8')), { chromium: playwright.chromium, project, output: resolve(values.out), configDir: dirname(path) }));
+  console.log(await sample(JSON.parse(await readFile(path, 'utf8')), { chromium: playwright.chromium, project, output: resolve(values.out), configDir: dirname(path), only: values.only ?? [] }));
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href) {
