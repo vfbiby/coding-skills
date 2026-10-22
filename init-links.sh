@@ -4,6 +4,8 @@
 # 通过 skills CLI 全局安装/刷新 Matt Pocock 的 skills（需要 bunx 和网络）。
 # 幂等：链对即跳过；目标被真实目录或其他链接占用则不动。
 # -f/--force：目标即使是错误/断掉的软链也强制重链；真实目录仍不动（防误删本地内容）。
+# 仓库里已删除的技能（或其 SKILL.md 被移除），下次运行时会把指向本仓的旧软链清掉，
+# 因此新电脑同步仓库后跑一遍即可与仓库保持一致。
 set -euo pipefail
 
 FORCE=0
@@ -46,6 +48,19 @@ for target in "${TARGETS[@]}"; do
     else
       ln -s "$src" "$link"
       echo "link  $link -> $src"
+    fi
+  done
+  # 清理：指向本仓但源头已不在（技能被删或 SKILL.md 被移除）的旧软链
+  for link in "$target"/*; do
+    [ -L "$link" ] || continue
+    dest="$(readlink "$link")"
+    case "$dest" in
+      "$REPO_ROOT"/*) ;;
+      *) continue ;;
+    esac
+    if [ ! -e "$dest" ] || [ ! -f "$dest/SKILL.md" ]; then
+      rm "$link"
+      echo "rm    $link -> ${dest}（仓库里已不存在）"
     fi
   done
 done
