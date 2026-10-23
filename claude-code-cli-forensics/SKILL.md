@@ -20,10 +20,13 @@ description: 静态分析 Claude Code CLI（Bun 单文件二进制）的内部�
 CLI 的安装位置因安装方式而异。从 `which` 出发，解析到真实文件：
 
 ```bash
-which claude
+which -a claude                        # 第一个可能是包装脚本（如 /opt/ccui/bin/claude → glmfclaude）
 readlink -f "$(which claude)"
 file "$(readlink -f "$(which claude)")"
 ```
+
+`which` 解析出来是 **shell 脚本**时，它只是转发器：用 `which -a claude` 找下一个、
+或读脚本最后的 `exec`，直到 `file` 报 ELF / Mach-O。
 
 常见位置：
 
@@ -32,14 +35,16 @@ file "$(readlink -f "$(which claude)")"
 ~/.npm-global/lib/node_modules/@anthropic-ai/claude-code/cli.js   # 非单文件分发时
 ```
 
-判断是否为本技能适用的 **Bun 单文件**：`file` 输出 `Mach-O 64-bit executable arm64`（或对应平台），且下一节能找到 `__bun`。
+判断是否为本技能适用的 **Bun 单文件**：`file` 输出 `Mach-O 64-bit executable arm64`（macOS）
+或 `ELF 64-bit LSB executable, x86-64`（Linux），且下一节能找到 Bun 节
+（Mach-O 叫 `__BUN,__bun`，ELF 叫 `.bun`）。
 
 先记三样东西，后面所有结论都用它们锚定：
 
 ```bash
 VERSION=$(strings -a "$CLI" | grep -m1 '^// Version: ')
 sha256sum "$CLI"        # macOS: shasum -a 256
-stat -f%z "$CLI"        # 字节数
+stat -c%s "$CLI"        # 字节数（Linux）；macOS: stat -f%z
 ```
 
 > 版本号 **不要硬编码**。从二进制的 `// Version:` 行自动取。
@@ -48,13 +53,17 @@ stat -f%z "$CLI"        # 字节数
 
 ## 1. 拆骨架
 
-### 1.1 找 `__bun` 节
+### 1.1 找 Bun 节
 
 **通用做法**（不要硬编码偏移）：
 
 ```bash
-otool -l "$CLI" | grep -A6 'sectname __bun$'
+otool -l "$CLI" | grep -A6 'sectname __bun$'     # macOS / Mach-O
+readelf -SW "$CLI" | grep -E ' \.bun '           # Linux / ELF：取 Off（文件偏移）与 Size 两列
 ```
+
+ELF 例（2.1.302 linux-x64）：`[30] .bun PROGBITS 0000000006e65000 6c63000 a41c2f5`
+→ 文件偏移 `0x6c63000`、大小 `0xa41c2f5`。注意 `.bun_builtins` 是另一个节，别取错。
 
 输出里取 `offset` 与 `size`。例：
 
@@ -281,6 +290,28 @@ diff -u /tmp/baseline-v1/card-baseline.json /tmp/baseline-v2/card-baseline.json
 
 ---
 
+## 5b. 环境差异（macOS 工作站 vs Linux 网关服务器）
+
+本技能最早在 macOS 上写成；Linux 服务器上逐项对应如下（2026-10 在网关服务器实测）：
+
+| 步骤 | macOS | Linux 服务器 |
+|---|---|---|
+| 找 Bun 节 | `otool -l` | `readelf -SW`（binutils 自带；没有 otool） |
+| 文件大小 | `stat -f%z` | `stat -c%s` |
+| 跑 `.mjs` 脚本 / vitest | `node` | 没有 node：`bun scripts/x.mjs`、`bun --bun x vitest run` |
+| 拼并排图 | `magick montage` | `montage`（ImageMagick 6，apt 装） |
+| cargo | 在 PATH | 在 `~/.cargo/bin`，先 `export PATH=$HOME/.cargo/bin:$PATH` |
+| 大文件切片 | — | `rg -a -o '.{0,300}NEEDLE.{0,300}'`；模板字符串跨行时 rg 会断，改用 Python 按 `index()` 切 |
+
+**和 [[leanrea]] 的分工**：leanrea 是通用逆向速查（`rg -uu -o` 切片、按格式路由），适合
+「这个函数在哪、附近长什么样」的一次性问题；本技能管 Claude Code 专属的骨架（footer 切模块、
+`Qt({` 工具定义、渲染注册表、跨版本 diff）。leanrea 的安装命令全是 `brew`，在 Linux 上换 apt；
+它路由表里的 r2 / binwalk / jadx 对本技能都不需要。
+
+**坑**：`grep -a -o '.{500}NEEDLE.{500}'` 对 270 MB 的二进制会跑几分钟；先
+`LC_ALL=C grep -a -b -o -F NEEDLE` 拿偏移，再 `dd` 或 Python 切。`pkill -f NEEDLE` 会杀掉
+命令行里含同一串的自己。
+
 ## 6. 坑表
 
 | 坑 | 症状 | 正确做法 |
@@ -308,12 +339,15 @@ diff -u /tmp/baseline-v1/card-baseline.json /tmp/baseline-v2/card-baseline.json
 
 ## 8. 本仓库的现成实现
 
-- 抽取脚本：`course/web-client/scripts/extract-cards.mjs`
+- 抽取脚本：`course/web-client/scripts/extract-cards.mjs`（Mach-O 与 ELF 都支持，按文件头自动分流；
+  默认依次找 darwin-arm64 / linux-x64 / linux-arm64 的 bun 全局安装位置）
 - 母本文档：`course/web-client/docs/card-baseline.md`
 - 机读产物：`course/web-client/docs/card-baseline.json`
 - 工具卡片清单：`course/web-client/docs/card-inventory.md`
 
 用法：
+
+没有 `node` 的机器（如 Linux 网关服务器）用 `bun` 跑，参数相同：`bun scripts/extract-cards.mjs`。
 
 ```bash
 cd course/web-client
@@ -374,6 +408,7 @@ node scripts/extract-cards.mjs --dump-raw /tmp/raw   # 原始模块（默认关�
    ```
    `--expanded` = 逐张展开（对照官方 ctrl+o）；不加 = 折叠组（对照官方默认）。
 7. 两边截图并排：`magick montage web.png official.png -tile 2x1 -geometry +14+14 ...`。
+   Linux 上 apt 装的是 ImageMagick 6，没有 `magick` 入口，直接 `montage ...`（参数相同）。
 
 ### 9.3 判定标准（官方 2.1.303 实测）
 
