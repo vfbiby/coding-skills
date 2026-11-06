@@ -1,14 +1,10 @@
 #!/bin/bash
 set -euo pipefail
 DIR=$(cd "$(dirname "$0")" && pwd)
-MTAPI_DIR=${1:-$HOME/codes/mtapi}
-OUT=${2:-$DIR/target}
-
-dotnet build "$DIR/mtprobe/mtprobe.csproj" -c Release -o "$OUT/mtprobe" -p:MtapiDir="$MTAPI_DIR" \
-  -p:BaseIntermediateOutputPath="$OUT/obj/" 2>&1 | grep -E " error |Build succeeded"
-
-dotnet publish "$DIR/mtprobe/mtprobe.csproj" -c Release -r linux-x64 --self-contained true \
-  -p:PublishSingleFile=true -p:MtapiDir="$MTAPI_DIR" -p:BaseIntermediateOutputPath="$OUT/obj-pub/" \
-  -o "$OUT/linux-x64" 2>&1 | grep -E " error |published" || true
-echo "mac dll: $OUT/mtprobe/mtprobe.dll"
-echo "linux static: $OUT/linux-x64/mtprobe"
+OUT=${1:-$HOME/.cache/brokerprobe}
+export PATH=$HOME/.cargo/bin:$HOME/.local/bin:$PATH
+cd "$DIR/probe"
+cargo build --release --target-dir "$OUT" 2>&1 | grep -E "^error|Finished"
+cargo zigbuild --release --target x86_64-unknown-linux-gnu --target-dir "$OUT" 2>&1 | grep -E "^error|Finished"
+echo "local:  $OUT/release/brokerprobe"
+echo "remote: $OUT/x86_64-unknown-linux-gnu/release/brokerprobe"

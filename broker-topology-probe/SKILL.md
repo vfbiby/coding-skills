@@ -1,55 +1,68 @@
 ---
 name: broker-topology-probe
-description: 实测 MT4/MT5 券商集群拓扑——找中央撮合服务器在哪、各接入点的后腿多长、跟单服务器放哪最快。触发：测券商服务器、找中央撮合、跟单服务器择位、挂单延迟分解、单账本验证。
+description: 实测 MT4 券商集群拓扑：找中央服务器在哪、跟单服务器或接入点选哪个最快。全程只读登录，不下单，实盘号也能测。触发：测券商服务器、找中央撮合、跟单服务器择位、选接入点、跟单延迟高怀疑接错接入点。
 ---
 
-# 券商集群拓扑探针（中央撮合定位 + 择位）
+# 券商集群拓扑探针（报价到达法）
 
-问题：券商给一串接入服务器 IP，订单最终汇总到哪台中央撮合？跟单服务器放谁旁边最快？
-原理：MT4/MT5 是「多接入 + 单中央」架构，接入只转发不撮合。**挂单 RTT − TCP RTT ≈ 该接入到中央的后腿×2**，残差最小的接入就是中央的邻居；跨接入交叉管理挂单可坐实单账本。
+问题：一个 MT4 服务器名（如 `EBCFinancialGroupKY-Live04`）背后有一串接入点，中央服务器在哪？跟单服务器放哪、连哪个接入点最快？
 
-## 纪律（先读）
+原理：MT4 是「多接入点 + 单中央」。中央把每一笔报价推给所有接入点，再由接入点转给客户端。从**同一个观测点**同时连上全部接入点，同一笔报价最先到的接入点就挨着中央。各点晚到的时间扣掉「观测点到该点的单程」（RTT/2），剩下的就是该点回中央的单程后腿。报价源源不断，几分钟就能攒几千个样本，而且零交易。
 
-- **只挂单、不市价单**：远偏移挂单（偏移要远超品种日波幅，如 BTCUSD 300、XAUUSD $500）+ 即挂即删，永不成交、零市场风险。跑完 `positions` 复核无残留。
-- 账号凭据只存 `~/codes/mtcopy-demo-accounts/`（仓库外），不进仓库、不贴 issue。
-- 全程本地单调钟计时；服务器时间戳（open_time 等）是秒级 + 券商钟差，**不用于计时**。
-- 挂单实验先 demo 后 live；live 账号零余额可能被券商 `Trade is disabled`（账号级开关，入金恢复），登录/行情仍可用。
+## 纪律
 
-## 工具
+- **只读**：探针只登录、订阅报价，代码里没有任何下单路径。实盘号测之前也要先征得所有者授权。
+- **密码**：在观测点上从库里直接读出来，经环境变量喂给探针，不写进命令行参数、文件或日志。用完 `unset`。
+- **不打扰生产会话**：同一账号会多开最多 N 条连接（N = 接入点数）。先只跑一次 `cluster`，确认生产网关那边没有该账号的断线，再跑 `ticks`。跑完再查一次网关日志。
+- **计时只用本地单调钟**：探针打的是 `Instant`。服务器时间戳只到秒级，还带券商钟差，只用来匹配报价。
+- **收尾**：远端的二进制和 csv 删掉。
 
-`mtprobe/`（探针源码，双协议；`build.sh [mtapi目录] [输出目录]` 编译，MTAPI DLL 在 `~/codes/mtapi/*.dll`）：
+## 工具（都在本目录）
 
 ```bash
-mtprobe <mt4|mt5> <host> <port> <login> <password> ping <n>        # TCP 握手 RTT×n（5s 超时）
-mtprobe <mt4|mt5> <host> <port> <login> <password> login           # 登录 RTT + balance/equity
-mtprobe <mt4|mt5> <host> <port> <login> <password> symbols [过滤]   # MT5：列品种（美分户常带 .r/.m 后缀）
-mtprobe <mt4|mt5> <host> <port> <login> <password> smoke <sym>     # 一单挂删走通全流程
-mtprobe <mt4|mt5> <host> <port> <login> <password> pending <sym> <lots> <offset> <n> [gapMs]
-                                                                   # 挂删×n，末尾打 min/p50/p95/max
-env MTPROBE_BUILD=<build>                                          # 覆写客户端 build 号（排协议兼容）
+./build.sh                                   # 产物在 ~/.cache/brokerprobe/{release,x86_64-unknown-linux-gnu/release}/brokerprobe
+MT4_LOGIN=.. MT4_PASSWORD=.. brokerprobe cluster <host:port>
+                                             # 登录一次，打印服务器名、公司，以及集群全部接入点（地址 + 描述）
+MT4_LOGIN=.. MT4_PASSWORD=.. brokerprobe ticks <秒> <品种,品种> <host:port>...
+                                             # 同时连所有点并订阅，stdout 每行：连接序号,本地微秒,品种,bid,ask,服务器毫秒
+python3 -I tcpping.py <host:port>...         # 每点 10 次 TCP 握手，打 min/p50
+python3 -I analyze.py ticks.csv 标签=tcp_min_ms ...
+                                             # 标签顺序 = ticks 的 host 顺序；自动取抢先最多的点作基准
 ```
 
-云上观测点：uk 服务器 `ssh root@57.129.160.113` 留有静态二进制 `/root/mtprobe`（伦敦视角，接近多数券商中央）。重传：`scp target/linux-x64/mtprobe root@57.129.160.113:/root/mtprobe`。
+探针依赖 `~/codes/mtapi/mt4_rust`（路径依赖）。远端是 x86_64 Linux，用 zigbuild 产物，scp 到 `/tmp` 即可跑。
 
-## 流程（按序，前两步不要交易权限）
+观测点：
+- uk（伦敦，`ssh -i ~/.ssh/id_ed25519_uk -o IdentitiesOnly=yes ubuntu@57.129.160.113`，root 不可登）。库里读密码：`sudo -n -u postgres psql -d mtcopy -Atc "select mt_password from trading_accounts where login=<login>"`。
+- 本机 ccusb（美国俄勒冈）。
 
-1. **TCP 矩阵**：两个观测点（本机 + uk）对所有 IP `ping 3`。可达性是硬约束（CN 网络常不通海外 Azure 段；唯一全网 refused 的节点是券商 ACL，放弃）。私网 IP（10.x）直接跳过。
-2. **判协议 + 判集群归属**：拿目标账号对每台可达节点 `login`。
-   - 协议不对：MT4 握手对 MT5 服务器会回 `Invalid account`，MT5 握手对 MT4 口则断线——两个协议都试。
-   - **正确集群上错账号 → 正经回 `INVALID_ACCOUNT`；错误集群上任何账号 → 静默断线**。所以「全部节点都静默断线」≠ 节点坏了，先怀疑列表是别的集群的。正向对照：拿一个已知能连的同券商账号跑一遍。
-   - 4/4 节点 balance/equity 一致 = 单一账号后端（第一条证据）。
-3. **挂单分解**：对每个可达节点 `pending <sym> <lots> <offset> 10~15 800`，同一观测点跑完所有节点再换观测点。**残差 = order p50 − TCP p50**：残差最小的接入 ≈ 中央所在；其余接入的残差带有「回中央」的地理特征（用城市间物理 RTT 对表：伦敦↔SG ~170ms、HK↔SG ~35ms、东京↔SG ~70ms），可圈到城市级。
-4. **单账本铁证**：从接入 A 挂一对远挂单（mtcli `limit`/`stop`，或探针改挂不删），从接入 B `positions` 看到同票号并 `delete`，回 A 复核已清。
-5. **择位结论**：跟单服务器放「残差最小的接入」旁边，用该位置的端到端 order p50/p95 收口。注意接入离中央远时，客户端本地再近也白搭（每单都背接入↔中央回程，实测香港接入到伦敦中央 377ms）。
+## 流程
 
-## 判读示例（Lirunex 实测 2026-10-01）
+1. **拿接入点列表**：任选一个能连的点跑 `cluster`。列表里同城常有「域名」和「裸 IP（描述带 P）」两个入口，`getent ahostsv4` 解析后同 IP 的只留一个。
+   完成标准：每个物理接入点都有一个可连的 `host:port`。
+2. **握手矩阵 + 托管归属**：两个观测点各自对所有点跑 `tcpping.py`。逐 IP 查 `curl -s ipinfo.io/<ip>/json` 的城市和 AS。Beeks、Equinix 这类金融托管是中央的强候选，阿里云等公有云多半只是接入。
+   完成标准：每个点都有两个观测点的 tcp min，以及城市和 AS。
+3. **报价到达对比**：在伦敦观测点跑 `ticks 180 <账号常用品种,一个主流外汇>`，然后跑 `analyze.py`，RTT 填该观测点的 tcp min。品种名要带券商后缀（如 `XAUUSD.s`），去库里的 `copy_intents.signal_symbol` 查。
+   完成标准：匹配到 1000 笔以上「所有连接都收到」的报价。stderr 里没有 `login_failed`；有就去掉那个点重跑。
+4. **换观测点交叉验证**：在另一个观测点重跑第 3 步。两次的抢先点和后腿排序一致，才说明结论来自集群本身，而不是观测点的位置。
+5. **结论**：中央 = 两次都抢先、后腿约 0 的接入点所在的城市。跟单服务器放那座城市，连那个接入点。再拿生产里「发单 → 回执」的中位数和 p90 做前后对比收口（库里 `copy_intents.timeline` 的 `send_requested` / `receipt_arrived`）。
 
-uk 视角：185.96.244.198（Beeks 伦敦）TCP 2ms / 挂单 p50 5.4ms（后腿 ~3ms）＝中央在此；119.42（香港接入）TCP 186ms / 挂单 377ms；92.223 TCP 236ms / 挂单 409ms——远程接入每单多背 170–190ms。跨洲挂单交叉管理坐实单账本。
+## 判读
+
+- `first` 列：抢先次数。中央旁边的点占绝大多数，远端点应接近 0。
+- `backleg vs ref`：相对基准点多出来的单程。同城两个点相差几毫秒，跨洲 60～150ms。
+- `lag p10` 为负是基准连接自身的抖动，看 p50。
+- 想把远端点换算成城市级距离，可对照城市间物理 RTT 表；但路由常绕路，只当参考。定位以「谁抢先」为准。
 
 ## 坑
 
-- zsh 里 `set -- $var` 不分词，逐台循环要把参数写全（`for host in a b c` + case 转端口）。
-- dotnet 的 obj 目录被 publish/build 混用会报 CS0579 重复特性——删干净 `obj/ bin/` 和自定义 obj 路径再编。
-- mtcli 每次调用重新登录 ~5s，只能做交叉管理这类不计时的操作；计时一律 mtprobe。
-- MT5 美分户品种名带后缀（XAUUSD.r），先 `symbols` 过滤再挂；`limitPoints` 是最小挂单距离（点）。
-- demo 集群结论不可外推到 live（托管商可能都不同，AXPM demo=Beeks SG + Azure SG、live=纯公有云）；券商可能对零余额 live 账号关交易。
+- mtapi 的 `QuoteClient::cluster_details()` 对 EBC 的 srv 解析出 0 条。探针直接扫 `latest_srv()` 原始字节（地址后偏移 68 字节是描述）。
+- 用 bash 的 `/dev/tcp` + `timeout` 计时会多出约 110ms 进程开销，握手一律用 `tcpping.py`。
+- 中国大陆接入点从海外连会丢包、偶发 1 秒以上的重传握手，所以看 min，不看均值。
+- MT4 登录要 3～10 秒（走 `loginid-mt4.mtapi.io` 解码握手哈希，生产网关同样如此，不含密码）。`ticks` 的录制时长从启动就开始算，要留出余量。
+- 报价匹配键是 (品种, bid, ask, 服务器秒)。同一秒内价格来回会撞键，脚本丢弃各连接到达跨度超过 2 秒的键。
+- 目前只支持 MT4。MT5 需要用 `~/codes/mtapi/mt5_rust` 另写一个同样形状的 `ticks`。
+
+## 判读示例（EBC Live04，2026-11-06）
+
+伦敦观测点、180 秒、2761 笔匹配报价。dc42 伦敦（Beeks，tcp 1.7ms）抢先 1463 次，dc51 伦敦（阿里）晚 3ms，dc78 法兰克福晚 15ms。北京、上海、深圳晚 150～195ms，香港晚 240～250ms，这几个点抢先 0 次。换美国观测点重跑，排序相同，中国点仍晚 150ms 以上。结论：中央在伦敦，应连 `dc42.isdata.cloud:10442`。当时用户接的是上海 `47.100.203.21:10468`，每单要绕伦敦↔上海一圈，发单到回执约 450ms。
